@@ -22,7 +22,6 @@ import locale
 import math
 import operator
 import os
-import pipes
 import platform
 import random
 import re
@@ -36,6 +35,7 @@ import xml.etree.ElementTree
 import zlib
 
 from .compat import (
+    compat_HTMLParseError,
     compat_HTMLParser,
     compat_basestring,
     compat_chr,
@@ -365,9 +365,9 @@ def get_elements_by_attribute(attribute, value, html, escape_value=True):
     retlist = []
     for m in re.finditer(r'''(?xs)
         <([a-zA-Z0-9:._-]+)
-         (?:\s+[a-zA-Z0-9:._-]+(?:=[a-zA-Z0-9:._-]*|="[^"]*"|='[^']*'))*?
+         (?:\s+[a-zA-Z0-9:._-]+(?:=[a-zA-Z0-9:._-]*|="[^"]*"|='[^']*'|))*?
          \s+%s=['"]?%s['"]?
-         (?:\s+[a-zA-Z0-9:._-]+(?:=[a-zA-Z0-9:._-]*|="[^"]*"|='[^']*'))*?
+         (?:\s+[a-zA-Z0-9:._-]+(?:=[a-zA-Z0-9:._-]*|="[^"]*"|='[^']*'|))*?
         \s*>
         (?P<content>.*?)
         </\1>
@@ -409,8 +409,12 @@ def extract_attributes(html_element):
     but the cases in the unit test will work for all of 2.6, 2.7, 3.2-3.5.
     """
     parser = HTMLAttributeParser()
-    parser.feed(html_element)
-    parser.close()
+    try:
+        parser.feed(html_element)
+        parser.close()
+    # Older Python may throw HTMLParseError in case of malformed HTML
+    except compat_HTMLParseError:
+        pass
     return parser.attrs
 
 
@@ -592,7 +596,7 @@ def unescapeHTML(s):
     assert type(s) == compat_str
 
     return re.sub(
-        r'&([^;]+;)', lambda m: _htmlentity_transform(m.group(1)), s)
+        r'&([^&;]+;)', lambda m: _htmlentity_transform(m.group(1)), s)
 
 
 def get_subprocess_encoding():
@@ -932,14 +936,6 @@ class YoutubeDLHandler(compat_urllib_request.HTTPHandler):
         except zlib.error:
             return zlib.decompress(data)
 
-    @staticmethod
-    def addinfourl_wrapper(stream, headers, url, code):
-        if hasattr(compat_urllib_request.addinfourl, 'getcode'):
-            return compat_urllib_request.addinfourl(stream, headers, url, code)
-        ret = compat_urllib_request.addinfourl(stream, headers, url)
-        ret.code = code
-        return ret
-
     def http_request(self, req):
         # According to RFC 3986, URLs can not contain non-ASCII characters, however this is not
         # always respected by websites, some tend to give out URLs with non percent-encoded
@@ -991,13 +987,13 @@ class YoutubeDLHandler(compat_urllib_request.HTTPHandler):
                     break
                 else:
                     raise original_ioerror
-            resp = self.addinfourl_wrapper(uncompressed, old_resp.headers, old_resp.url, old_resp.code)
+            resp = compat_urllib_request.addinfourl(uncompressed, old_resp.headers, old_resp.url, old_resp.code)
             resp.msg = old_resp.msg
             del resp.headers['Content-encoding']
         # deflate
         if resp.headers.get('Content-encoding', '') == 'deflate':
             gz = io.BytesIO(self.deflate(resp.read()))
-            resp = self.addinfourl_wrapper(gz, old_resp.headers, old_resp.url, old_resp.code)
+            resp = compat_urllib_request.addinfourl(gz, old_resp.headers, old_resp.url, old_resp.code)
             resp.msg = old_resp.msg
             del resp.headers['Content-encoding']
         # Percent-encode redirect URL of Location HTTP header to satisfy RFC 3986 (see
@@ -1187,7 +1183,7 @@ def unified_timestamp(date_str, day_first=True):
     if date_str is None:
         return None
 
-    date_str = date_str.replace(',', ' ')
+    date_str = re.sub(r'[,|]', '', date_str)
 
     pm_delta = 12 if re.search(r'(?i)PM', date_str) else 0
     timezone, date_str = extract_timezone(date_str)
@@ -1538,7 +1534,7 @@ def shell_quote(args):
         if isinstance(a, bytes):
             # We may get a filename encoded with 'encodeFilename'
             a = a.decode(encoding)
-        quoted_args.append(pipes.quote(a))
+        quoted_args.append(compat_shlex_quote(a))
     return ' '.join(quoted_args)
 
 
@@ -1819,6 +1815,10 @@ def float_or_none(v, scale=1, invscale=1, default=None):
         return default
 
 
+def bool_or_none(v, default=None):
+    return v if isinstance(v, bool) else default
+
+
 def strip_or_none(v):
     return None if v is None else v.strip()
 
@@ -1835,10 +1835,20 @@ def parse_duration(s):
         days, hours, mins, secs, ms = m.groups()
     else:
         m = re.match(
-            r'''(?ix)(?:P?T)?
+            r'''(?ix)(?:P?
+                (?:
+                    [0-9]+\s*y(?:ears?)?\s*
+                )?
+                (?:
+                    [0-9]+\s*m(?:onths?)?\s*
+                )?
+                (?:
+                    [0-9]+\s*w(?:eeks?)?\s*
+                )?
                 (?:
                     (?P<days>[0-9]+)\s*d(?:ays?)?\s*
                 )?
+                T)?
                 (?:
                     (?P<hours>[0-9]+)\s*h(?:ours?)?\s*
                 )?
@@ -1933,7 +1943,7 @@ class PagedList(object):
 
 
 class OnDemandPagedList(PagedList):
-    def __init__(self, pagefunc, pagesize, use_cache=False):
+    def __init__(self, pagefunc, pagesize, use_cache=True):
         self._pagefunc = pagefunc
         self._pagesize = pagesize
         self._use_cache = use_cache
@@ -2211,7 +2221,12 @@ def parse_age_limit(s):
 
 def strip_jsonp(code):
     return re.sub(
-        r'(?s)^[a-zA-Z0-9_.$]+\s*\(\s*(.*)\);?\s*?(?://[^\n]*)*$', r'\1', code)
+        r'''(?sx)^
+            (?:window\.)?(?P<func_name>[a-zA-Z0-9_.$]+)
+            (?:\s*&&\s*(?P=func_name))?
+            \s*\(\s*(?P<callback_data>.*)\);?
+            \s*?(?://[^\n]*)*$''',
+        r'\g<callback_data>', code)
 
 
 def js_to_json(code):
@@ -2335,6 +2350,7 @@ def mimetype2ext(mt):
         'ttml+xml': 'ttml',
         'x-flv': 'flv',
         'x-mp4-fragmented': 'mp4',
+        'x-ms-sami': 'sami',
         'x-ms-wmv': 'wmv',
         'mpegurl': 'm3u8',
         'x-mpegurl': 'm3u8',
@@ -2357,14 +2373,14 @@ def parse_codecs(codecs_str):
     vcodec, acodec = None, None
     for full_codec in splited_codecs:
         codec = full_codec.split('.')[0]
-        if codec in ('avc1', 'avc2', 'avc3', 'avc4', 'vp9', 'vp8', 'hev1', 'hev2', 'h263', 'h264', 'mp4v'):
+        if codec in ('avc1', 'avc2', 'avc3', 'avc4', 'vp9', 'vp8', 'hev1', 'hev2', 'h263', 'h264', 'mp4v', 'hvc1'):
             if not vcodec:
                 vcodec = full_codec
-        elif codec in ('mp4a', 'opus', 'vorbis', 'mp3', 'aac', 'ac-3'):
+        elif codec in ('mp4a', 'opus', 'vorbis', 'mp3', 'aac', 'ac-3', 'ec-3', 'eac3', 'dtsc', 'dtse', 'dtsh', 'dtsl'):
             if not acodec:
                 acodec = full_codec
         else:
-            write_string('WARNING: Unknown codec %s' % full_codec, sys.stderr)
+            write_string('WARNING: Unknown codec %s\n' % full_codec, sys.stderr)
     if not vcodec and not acodec:
         if len(splited_codecs) == 2:
             return {
@@ -2567,14 +2583,18 @@ def srt_subtitles_timecode(seconds):
 
 
 def dfxp2srt(dfxp_data):
+    '''
+    @param dfxp_data A bytes-like object containing DFXP data
+    @returns A unicode object containing converted SRT data
+    '''
     LEGACY_NAMESPACES = (
-        ('http://www.w3.org/ns/ttml', [
-            'http://www.w3.org/2004/11/ttaf1',
-            'http://www.w3.org/2006/04/ttaf1',
-            'http://www.w3.org/2006/10/ttaf1',
+        (b'http://www.w3.org/ns/ttml', [
+            b'http://www.w3.org/2004/11/ttaf1',
+            b'http://www.w3.org/2006/04/ttaf1',
+            b'http://www.w3.org/2006/10/ttaf1',
         ]),
-        ('http://www.w3.org/ns/ttml#styling', [
-            'http://www.w3.org/ns/ttml#style',
+        (b'http://www.w3.org/ns/ttml#styling', [
+            b'http://www.w3.org/ns/ttml#style',
         ]),
     )
 
@@ -2669,7 +2689,7 @@ def dfxp2srt(dfxp_data):
         for ns in v:
             dfxp_data = dfxp_data.replace(ns, k)
 
-    dfxp = compat_etree_fromstring(dfxp_data.encode('utf-8'))
+    dfxp = compat_etree_fromstring(dfxp_data)
     out = []
     paras = dfxp.findall(_x('.//ttml:p')) or dfxp.findall('.//p')
 
@@ -2732,6 +2752,8 @@ def cli_option(params, command_option, param):
 
 def cli_bool_option(params, command_option, param, true_value='true', false_value='false', separator=None):
     param = params.get(param)
+    if param is None:
+        return []
     assert isinstance(param, bool)
     if separator:
         return [command_option + separator + (true_value if param else false_value)]
