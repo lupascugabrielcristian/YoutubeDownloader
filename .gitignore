@@ -1,3 +1,4 @@
 youtube-dl.source/*
 .idea/*
+.vscode/*
 *.pyc

@@ -4,26 +4,27 @@ import argparse
 import Convertor
 import youtube_dl
 import YoutubeSong
+from PlayListItemFilter import *
 import logger
 
 
-def getPlaylist(plUrl):
+def getPlaylist(url):
     playlistOptions = {
         'ignoreerrors': 'True',
         'progress_hooks': [],
         'logger': logger.PlaylistLogger(),
     }
     with youtube_dl.YoutubeDL(playlistOptions) as ydl:
-        return ydl.extract_info(plUrl, download=False)
+        return ydl.extract_info(url, download=False)
 
 
-def downloadPlayList(playList):
+def downloadPlayList(playList, itemsFilter):
     if playList is None:
         print("Playlist not found or has no items")
         exit(1)
     for item in playList['entries']:
         try:
-            if item is None:
+            if itemsFilter.checkItem(item) == False:
                 continue
             getPlItem(item)
         except UnicodeEncodeError:
@@ -31,6 +32,7 @@ def downloadPlayList(playList):
         except Exception as e:
             if not item['title'] is None:
                 print("Error during downloading " + item['title'])
+                print(e)
             else:
                 print("Error during downloading item at " + item['webpage_url'])
                 print("Exception caught " + str(e))
@@ -74,11 +76,14 @@ def getParameters():
     parser = argparse.ArgumentParser()
     parser.add_argument('url')
     parser.add_argument('--path', help='path to download folder', default='./', dest='userPath')
+    parser.add_argument('--search', nargs='*', help='Select the songs containing this keywords')
     args = parser.parse_args()
     return args
 
 
+itemsFilter = PlayListItemFilter()
 userParams = getParameters()
+itemsFilter.addFiltersFromArguments(userParams)
 pl = getPlaylist(userParams.url)
-downloadPlayList(pl)
+downloadPlayList(pl, itemsFilter)
 Convertor.convertDir(pl['title']) # si aici sa ii dau path catre alt folder
