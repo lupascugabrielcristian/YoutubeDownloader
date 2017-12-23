@@ -2,21 +2,21 @@ import os
 import sys
 from environment import OSEnv
 
-def convertDir(dirName):
-    print("Converting " + str(len(os.listdir(dirName))) + " files")
+def convertDir(pathToDir):
+    print("Converting " + str(len(os.listdir(pathToDir))) + " files")
     counter = 1
 
     if not checkForConversionExecutable():
         print("Cannot find path to ffmpeg")
         return
-    for file in os.listdir(dirName):
+    for file in os.listdir(pathToDir):
         if not checkForBadCharacters(file):
-            file = renameFile(dirName, file)
+            file = renameFile(pathToDir, file)
 
         try:
-            conversionResult = convert("./" + dirName + "/" + file)
+            conversionResult = convert("./" + pathToDir + "/" + file)
             if conversionResult == 0:
-                os.remove(dirName + "/" + file)
+                os.remove(pathToDir + "/" + file)
                 print(str(counter) + " Converted " + file)
                 counter += 1
             else:
@@ -24,7 +24,7 @@ def convertDir(dirName):
         except UnicodeEncodeError:
             print("Failed to convert because the name of the file: UnicodeEncodeError")
             continue
-    print("After conversion: " + str(len(os.listdir(dirName))) + " files")
+    print("After conversion: " + str(len(os.listdir(pathToDir))) + " files")
     if os.path.isfile("conversion.log"):
         os.remove("conversion.log")
 
@@ -35,8 +35,8 @@ def checkForConversionExecutable():
     else:
         return False
 
-def clearDir(dirName):
-    for file in os.listdir(dirName):
+def clearDir(pathToDir):
+    for file in os.listdir(pathToDir):
         if not isMp3(file):
             os.remove(file)
 
@@ -81,14 +81,14 @@ def checkForBadCharacters(file):
         return False
     return True
 
-def renameFile(dirName, oldFile):
+def renameFile(pathToDir, oldFile):
     if checkSystem() is OSEnv.LINUX:
         newFileName = oldFile.replace('\'', '')
         newFileName = newFileName.replace('`', '')
         newFileName = newFileName.replace('’', '')
         newFileName = newFileName.replace('‘', '')
         newFileName = newFileName.replace('"', '')
-        operationResult = os.system("mv \"" + dirName + "/" + oldFile + "\" \"" + dirName + "/" + newFileName + "\"")
+        operationResult = os.system("mv \"" + pathToDir + "/" + oldFile + "\" \"" + pathToDir + "/" + newFileName + "\"")
         if operationResult == 256:
             print("Failed to rename file with problematic name")
             return oldFile

@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 import sys
+import argparse
 import Convertor
 import youtube_dl
 import YoutubeSong
@@ -48,7 +49,7 @@ def getPlItem(plItem):
     if not plItem['title'] is None:
         song.title = plItem['title']
     pl_title = plItem['playlist_title']
-    out_tmp = "./" + pl_title + "/%(title)s.%(ext)s"
+    out_tmp = "./" + pl_title + "/%(title)s.%(ext)s" # aici sa adaug destinatia
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': out_tmp,
@@ -69,13 +70,15 @@ def getUrl(url):
         ydl.download([url])
 
 
-def checkParameters():
-    if len(sys.argv) != 2:
-        print("Add playlist url as second parameter")
-        exit(1)
+def getParameters():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('url')
+    parser.add_argument('--path', help='path to download folder', default='./', dest='userPath')
+    args = parser.parse_args()
+    return args
 
 
-checkParameters()
-pl = getPlaylist(sys.argv[1])
+userParams = getParameters()
+pl = getPlaylist(userParams.url)
 downloadPlayList(pl)
-Convertor.convertDir(pl['title'])
+Convertor.convertDir(pl['title']) # si aici sa ii dau path catre alt folder
