@@ -4,7 +4,7 @@ import argparse
 import Convertor
 import youtube_dl
 import YoutubeSong
-from PlayListItemFilter import *
+from PlayListItemFilter import PlayListItemFilter
 import logger
 
 
@@ -24,7 +24,7 @@ def downloadPlayList(playList, itemsFilter):
         exit(1)
     for item in playList['entries']:
         try:
-            if itemsFilter.checkItem(item) == False:
+            if itemsFilter.checkItem(item) is False:
                 continue
             getPlItem(item)
         except UnicodeEncodeError:
@@ -51,7 +51,7 @@ def getPlItem(plItem):
     if not plItem['title'] is None:
         song.title = plItem['title']
     pl_title = plItem['playlist_title']
-    out_tmp = "./" + pl_title + "/%(title)s.%(ext)s" # aici sa adaug destinatia
+    out_tmp = "./" + pl_title + "/%(title)s.%(ext)s"
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': out_tmp,
@@ -77,6 +77,8 @@ def getParameters():
     parser.add_argument('url')
     parser.add_argument('--path', help='path to download folder', default='./', dest='userPath')
     parser.add_argument('--search', nargs='*', help='Select the songs containing this keywords')
+    parser.add_argument('--min',  type=int, default=0)
+    parser.add_argument('--max', type=int, default=999)
     args = parser.parse_args()
     return args
 
@@ -86,4 +88,4 @@ userParams = getParameters()
 itemsFilter.addFiltersFromArguments(userParams)
 pl = getPlaylist(userParams.url)
 downloadPlayList(pl, itemsFilter)
-Convertor.convertDir(pl['title']) # si aici sa ii dau path catre alt folder
+Convertor.convertDir(pl['title'])

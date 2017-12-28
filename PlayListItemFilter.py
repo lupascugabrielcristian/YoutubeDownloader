@@ -1,4 +1,17 @@
 class PlayListItemFilter:
+    """
+    The purpose of this module is to apply static filters based on the 
+    arguments received. The arguments object is obtained using the argparse
+    library.
+    
+    Examples:
+
+    ``parser = argparse.ArgumentParser()``
+
+    ``args = parser.parse_args()``
+        
+    args can be passed to addFiltersFromArguments method
+    """
 
     def __init__(self):
         self.filterFunctions = []
@@ -12,6 +25,8 @@ class PlayListItemFilter:
         if not arguments.search is None:
             self.addFilter(PlayListItemFilter.getSearchFilter(arguments.search))
         # index parameter
+        self.addFilter(PlayListItemFilter.getMinIndexFilter(arguments.min))
+        self.addFilter(PlayListItemFilter.getMaxIndexFilter(arguments.max))
 
     def checkItem(self, item):
         for filter in self.filterFunctions:
@@ -37,4 +52,16 @@ class PlayListItemFilter:
                         return True
                 return False
         return searchFilter
+
+    @staticmethod
+    def getMinIndexFilter(minIndex):
+        def minIndexFilter(item):
+            return item['playlist_index'] >= minIndex
+        return minIndexFilter
+
+    @staticmethod
+    def getMaxIndexFilter(maxIndex):
+        def maxIndexFilter(item):
+            return item['playlist_index'] <= maxIndex
+        return maxIndexFilter
 
